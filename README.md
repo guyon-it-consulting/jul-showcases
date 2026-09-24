@@ -90,10 +90,32 @@ $ python prompt-difficulty/run.py
 🧠 [hard 0.99] full model  Derive the backpropagation equations for a two-layer MLP…
 ```
 
+**A fully on-device browser agent driving a real site** — JuL picks the operation
++ target from the page's **accessibility tree**; the Apple Foundation Model writes
+the field text. It books a train on the real SNCF Connect, from the homepage to
+priced results, entirely on your Mac.
+
+▶️ **[Watch the screencast: `browser-agent/demo_sncf.mp4`](browser-agent/demo_sncf.mp4)**
+*(recorded on a logged-out session — no account data)*
+
+```console
+$ python browser-agent/run_cdp.py --url https://www.sncf-connect.com \
+      --goal "Book a one-way train from Lyon to Toulouse in 3 days, stop at results"
+
+→ step 1  TYPE_TEXT  Rechercher     ⌨ "Lyon"        (home search)
+→ step 2  TYPE_TEXT  Départ :       ⌨ "Lyon"
+→ step 3  TYPE_TEXT  Arrivée :      ⌨ "Toulouse"
+→ step 4  SET_DATE   dimanche 27 septembre 2026     (today + 3 days)
+→ step 5  CLICK      Voir les prix
+✓ step 6  DONE       → results reached & VERIFIED (Lyon + Toulouse + prices)
+
+  JuL decisions : ~130 ms median   ·   Apple FM writes the cities   ·   $0.00
+```
+
 Every decision above runs **on-device, in tens of milliseconds, for $0** — no API
-key, no network, nothing generated. There are also two heavier showcases: triaging
-**millions** of real support tickets, and a **fully on-device browser agent** that
-drives a real site ([demo video](browser-agent/demo_sncf.mp4)).
+key, no network, nothing generated. Two brains, both local: JuL decides, the Apple
+Foundation Model writes — and together they book a train. There's also a
+scale showcase that triages **millions** of real support tickets (see below).
 
 ## Showcases
 
