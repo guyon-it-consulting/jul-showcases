@@ -10,6 +10,91 @@ The point of each demo is the same as Jev's: a single small, fast, typed
 decision (`Choice`, `Noul`, `Score`) embedded where a full LLM call would be too
 slow or too expensive.
 
+## See it in action
+
+**A form that branches itself** — JuL picks the next question from the answers so
+far. Ask it as a developer and it asks about your stack; ask as a founder and it
+skips that entirely. No `if/then` in the code — the branching lives in the model.
+
+```console
+$ python julform/run.py
+
+JuL asks: What best describes your role?
+  1. Developer   2. Designer   3. Founder   4. Other
+  > 1
+JuL asks: What's your primary tech stack?
+  1. JavaScript/TypeScript   2. Python   3. Go/Rust   4. Other
+  > 1
+JuL asks: How big is your team?
+  1. Just me   2. 2-10   3. 11-50   4. 50+
+  > 1
+JuL asks: What's your monthly budget?
+  1. <$50   2. $50-500   3. $500+
+  > 1
+================================================
+Form complete. JuL branched to collect:
+  role        : Developer
+  stack       : JavaScript/TypeScript
+  team_size   : Just me
+  budget      : <$50
+================================================
+
+$ python julform/run.py          # a founder gets a different branch — no "stack" first
+
+JuL asks: What best describes your role?  > 3   (Founder)
+JuL asks: How big is your team?           > 4   (50+)
+JuL asks: What's your monthly budget?     > 3   ($500+)
+================================================
+Form complete. JuL branched to collect:
+  role: Founder · team_size: 50+ · budget: $500+
+================================================
+```
+
+**Re-rank a list by plain-language intent** — one `Score` per item, sorted.
+
+```console
+$ python intent-reranker/run.py
+Intent: 'deep technical engineering content; downweight drama and clickbait'
+
+ 1. [3.48 ###] Formal verification of a distributed consensus protocol in TLA+
+ 2. [3.41 ###] Building a lock-free queue: memory ordering the hard way
+ 3. [3.21 ###] The math behind fast inverse square root, explained from scratch
+ ...
+ 9. [0.34    ] Elon vs the board: the drama nobody saw coming
+10. [0.25    ] My honest review of working from a beach for a year
+```
+
+**Mute ad/marketing noise, keep what matters** — one yes/no `Noul` per notification.
+
+```console
+$ python notification-triage/run.py
+
+KEPT (you'll be notified):
+  [ad 0.00]  Your OTP code is 481920. Do not share it with anyone.
+  [ad 0.00]  Payment of $1,204.00 to Landlord LLC was successful.
+  [ad 0.01]  Dr. Klein's office: your appointment is confirmed for Thursday 14:00.
+MUTED (silenced, not deleted):
+  [ad 1.00]  🔥 FLASH SALE! 50% off everything — shop now!
+  [ad 0.84]  Congratulations! You may have won a free iPhone. Tap to claim now!!!
+```
+
+**Route prompts fast-mode vs full-model before they're sent** — a `Choice` in ~130 ms.
+
+```console
+$ python prompt-difficulty/run.py
+
+⚡ [hard 0.00] fast mode   What's the capital of France?
+⚡ [hard 0.01] fast mode   Write a haiku about autumn.
+🧠 [hard 0.96] full model  Explain how HTTPS certificate validation works…
+🧠 [hard 0.98] full model  Design a distributed rate limiter across 20 regions…
+🧠 [hard 0.99] full model  Derive the backpropagation equations for a two-layer MLP…
+```
+
+Every decision above runs **on-device, in tens of milliseconds, for $0** — no API
+key, no network, nothing generated. There are also two heavier showcases: triaging
+**millions** of real support tickets, and a **fully on-device browser agent** that
+drives a real site ([demo video](browser-agent/demo_sncf.mp4)).
+
 ## Showcases
 
 | Dir | Jevable inspiration | What it shows | JuL primitive |
