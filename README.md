@@ -162,6 +162,20 @@ python browser-agent/run.py --headed           # watch the browser window
 If `fm` is unavailable, the agent still runs but skips text entry (it only
 decides operations/targets).
 
+The same brain also drives the **real Google Flights** site — the exact
+Browser Use × Jev scenario (Zürich → London):
+
+```bash
+python browser-agent/run_flights.py --headed   # watch it on the real site
+```
+
+It handles the cookie-consent gate and ARIA comboboxes, reaches the results page
+(`/travel/flights/search`) in ~7 s — comparable to jev-ultrafast's ~7.1 s, but
+fully on-device for $0. Google Flights is complex and anti-bot-heavy; this
+targets the origin/destination + search flow (calendar date entry is out of
+scope for the MVP), so treat it as a best-effort real-site demo, not a robust
+production agent.
+
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
 `JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage
 demos take `--model` directly (e.g. `--model wemm-4b-4bit` for higher accuracy at
