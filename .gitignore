@@ -12,3 +12,13 @@ venv/
 
 # OS
 .DS_Store
+
+# Captured media & run artifacts (may contain personal data from live sites;
+# regenerate locally with record_run.py). Never commit real-account screenshots.
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.webm
+browser-agent/frames/
+

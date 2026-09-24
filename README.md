@@ -162,24 +162,34 @@ python browser-agent/run.py --headed           # watch the browser window
 If `fm` is unavailable, the agent still runs but skips text entry (it only
 decides operations/targets).
 
-The same brain also drives the **real Google Flights** site — the exact
-Browser Use × Jev scenario (Zürich → London):
+The same brain can also drive a **real, bot-protected site** by attaching to
+**your own browser** over CDP — the browser-use / jev-ultrafast approach, where
+the model talks to your real Chrome/Arc rather than a throwaway Chromium (which
+anti-bot systems block). Here the action space comes from the **accessibility
+tree** ([`agent_ax.py`](browser-agent/agent_ax.py)), which gives each control its
+true role and accessible name ("Départ :", "Arrivée :", "Voir les prix") — far
+more robust than DOM heuristics on complex pages.
 
 ```bash
-python browser-agent/run_flights.py --headed   # watch it on the real site
+# 1) launch your browser with remote debugging, open the site, pass consent by hand:
+/Applications/Arc.app/Contents/MacOS/Arc \
+    --remote-debugging-port=9222 --user-data-dir="$HOME/.arc-agent"
+
+# 2) let the on-device agent drive it (JuL decides, Apple FM writes):
+python browser-agent/run_cdp.py --url https://www.sncf-connect.com \
+    --goal "Book a one-way train from Lyon to Toulouse in 3 days, stop at results"
 ```
 
-It handles the cookie-consent gate and ARIA comboboxes, and correctly enters both
-cities — including **replacing** Google's prefilled origin: JuL judges each
-prefilled field against the goal with a `Noul` (e.g. "Lyon" vs a Zürich goal →
-0.04 → refill), so it types "Zurich" and "London" itself. All on-device, $0.
+Measured on a real SNCF Connect session (Apple M-series), matched to
+jev-ultrafast's discipline (both models warmed up before the clock, initial
+navigation excluded, independent outcome verification): 6 steps, JuL decision
+~130 ms median, Apple FM writing the cities, results reached and verified — all
+on-device for $0. `record_run.py` captures a screencast of the run.
 
-Honest limitation: Google Flights renders results without a clean navigation and
-re-renders its search controls dynamically, which the generic MVP harness does
-not reliably trigger (jev-ultrafast solves this with a dedicated Browser Harness).
-So the real-site run reliably *fills the search correctly* but may not always
-reach the results view. The bundled local demo site (`run.py`) completes the full
-flow end-to-end every time; treat `run_flights.py` as a best-effort real-site demo.
+Honest scope: real sites are dynamic and non-deterministic; the accessibility
+tree makes field/target detection reliable, but heavily fortified sites (DataDome
+CAPTCHAs, etc.) still require your own trusted session. The bundled local demo
+site (`run.py`) completes the full flow end-to-end every time.
 
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
 `JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage

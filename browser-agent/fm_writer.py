@@ -30,6 +30,13 @@ class FMWriter:
         except Exception:
             return False
 
+    def warmup(self) -> int:
+        """Trigger the model's cold start before a timed run. Returns latency ms."""
+        if not self.available:
+            return 0
+        _, ms = self.write_field("warmup", "city", "")
+        return ms
+
     def write_field(self, goal: str, field_label: str, current_value: str = "",
                     filled: dict | None = None) -> tuple[str, int]:
         """Return (value_to_type, latency_ms). Falls back to '' if fm is unavailable.
@@ -42,14 +49,15 @@ class FMWriter:
             return "", 0
         context = ""
         if filled:
-            context = "Already filled: " + ", ".join(f'{k}={v}' for k, v in filled.items()) + "\n"
+            context = "Values already entered: " + ", ".join(f'{k}={v}' for k, v in filled.items()) + "\n"
         prompt = (
-            "You fill one web form field for a flight search. Output ONLY the exact "
-            "value to type, no quotes, no explanation, no punctuation.\n"
+            "You are filling one field to progress toward a travel-search goal. "
+            "Output ONLY the exact value to type — a place or city name — with no "
+            "quotes, no explanation, no extra words.\n"
             f"Goal: {goal}\n"
             f"{context}"
             f'Field to fill now: "{field_label}"\n'
-            "Value:"
+            "Given the goal and what is already entered, the next value to type is:"
         )
         t0 = time.perf_counter()
         try:
