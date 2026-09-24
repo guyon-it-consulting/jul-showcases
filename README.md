@@ -111,6 +111,9 @@ Goal: "one-way train from Lyon to Toulouse in 3 days, stop at results"
 
 No site-specific scripting: the agent decides only from the action space.
 
+Screencast of the run: [`browser-agent/demo_sncf.mp4`](browser-agent/demo_sncf.mp4)
+(recorded on a logged-out session — no account data).
+
 ## Setup
 
 JuL must be importable, and the showcases use the **`wemm-4b-4bit`** preset
