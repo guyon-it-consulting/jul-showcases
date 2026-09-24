@@ -20,6 +20,7 @@ slow or too expensive.
 | [`prompt-difficulty/`](prompt-difficulty/) | Prompt difficulty classifier | Rate a prompt easy/hard before sending, to offer a "fast mode". | `Score` |
 | [`ticket-triage-scale/`](ticket-triage-scale/) | Support-ticket triage at volume | Route **millions** of real support tickets, measuring real throughput and cost vs a hosted API. | `Choice` |
 | [`ticket-triage-autoscale/`](ticket-triage-autoscale/) | The autoscale value | `autotune` lifts a fast model's accuracy (+14.5 pts) in seconds, with throughput preserved. | `Choice` + `autotune` |
+| [`browser-agent/`](browser-agent/) | A faster browser agent (Browser Use × Jev) | A **fully on-device** browser agent: JuL picks the operation + target each step; the Apple Foundation Model writes field text. | `Choice` (fan-out) |
 
 The first four share one thin helper, [`common/jul_helper.py`](common/jul_helper.py),
 which owns the single `TypeSafeClient` so the model is loaded once and reused. The
@@ -62,6 +63,49 @@ tickets (train=500, test=200):
 So the fast model keeps its throughput and gains the accuracy of a much larger
 one — millions of tickets triaged both fast *and* well, locally, for $0.
 
+## A fully on-device browser agent
+
+[`browser-agent/`](browser-agent/) reproduces the "A faster browser agent"
+(Browser Use × Jev) idea, but with **both brains on-device**:
+
+- **JuL decides.** Each step, `snapshot.js` turns the page into a numbered action
+  table, and one `system_one` call does a *speculative fan-out*: pick the
+  operation (`CLICK` / `TYPE_TEXT` / `SELECT` / `DONE`) and, in the same pass, the
+  target for each operation family. We keep the target matching the chosen
+  operation — two+ decisions in one model pass. JuL only ever *chooses*.
+- **The Apple Foundation Model writes.** When the operation is `TYPE_TEXT`, the
+  on-device Apple model (`fm respond`, macOS 26+) generates the field value (e.g.
+  "London"). JuL never generates text.
+- **The code owns the loop.** Observation freshness, an anti-loop guard, an action
+  budget, and independent goal verification live in [`agent.py`](browser-agent/agent.py),
+  not in the model — the same division of labor as the original.
+
+Nothing leaves the Mac: no cloud, no API key, no cost. This is *more* on-device
+than the original, which calls a hosted model for text.
+
+```
+OBSERVE  Playwright + snapshot.js  → indexed action table
+DECIDE   JuL system_one (fan-out): operation + click/type/select targets   [~250 ms/step]
+WRITE    if TYPE_TEXT → Apple Foundation Model generates the value          [~300 ms, warm]
+ACT      Playwright executes; freshness + anti-loop guards
+LOOP     re-observe → new action space
+```
+
+Measured on a bundled local demo site (multi-step flight search), Apple M-series:
+
+```
+Goal: "round-trip flights from Zurich to London in economy, stop at results"
+→ TYPE_TEXT Where from?   fm→ "Zurich"
+→ TYPE_TEXT Where to?     fm→ "London"
+→ SELECT    Cabin class   JuL→ economy
+→ CLICK     Search flights
+✓ DONE      (results visible)
+5 steps · ~7 s wall · JuL ~280 ms/step · $0.00
+```
+
+It generalizes to other goals (e.g. one-way Paris→Tokyo in business) with no
+site-specific scripting. See [`browser-agent/`](browser-agent/) for the loop.
+
 ## Setup
 
 JuL must be importable, and the showcases use the **`wemm-4b-4bit`** preset
@@ -103,6 +147,20 @@ jul models add qwen3-embedding-0.6b --repo mlx-community/Qwen3-Embedding-0.6B-4b
 python ticket-triage-scale/run.py --n 50000        # throughput + million-scale extrapolation
 python ticket-triage-autoscale/run.py              # zero-shot vs autotuned accuracy
 ```
+
+The browser agent needs Playwright and the Apple Foundation Models CLI
+(`fm`, built into macOS 26+; accept its licence once):
+
+```bash
+pip install playwright && python -m playwright install chromium
+sudo fm license            # one-time, accept Apple's terms; check with: fm available
+
+python browser-agent/run.py                    # drives a bundled local demo site
+python browser-agent/run.py --headed           # watch the browser window
+```
+
+If `fm` is unavailable, the agent still runs but skips text entry (it only
+decides operations/targets).
 
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
 `JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage
