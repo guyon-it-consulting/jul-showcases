@@ -66,45 +66,50 @@ one — millions of tickets triaged both fast *and* well, locally, for $0.
 ## A fully on-device browser agent
 
 [`browser-agent/`](browser-agent/) reproduces the "A faster browser agent"
-(Browser Use × Jev) idea, but with **both brains on-device**:
+(Browser Use × Jev) idea, but with **both brains on-device** and driving **your
+real browser** so it works on real, bot-protected sites:
 
-- **JuL decides.** Each step, `snapshot.js` turns the page into a numbered action
-  table, and one `system_one` call does a *speculative fan-out*: pick the
-  operation (`CLICK` / `TYPE_TEXT` / `SELECT` / `DONE`) and, in the same pass, the
-  target for each operation family. We keep the target matching the chosen
-  operation — two+ decisions in one model pass. JuL only ever *chooses*.
+- **JuL decides.** Each step, one `system_one` call does a *speculative fan-out*:
+  pick the operation (`CLICK` / `TYPE_TEXT` / `SELECT` / `DONE`) and, in the same
+  pass, the target for each operation family. JuL only ever *chooses*.
 - **The Apple Foundation Model writes.** When the operation is `TYPE_TEXT`, the
   on-device Apple model (`fm respond`, macOS 26+) generates the field value (e.g.
-  "London"). JuL never generates text.
-- **The code owns the loop.** Observation freshness, an anti-loop guard, an action
-  budget, and independent goal verification live in [`agent.py`](browser-agent/agent.py),
-  not in the model — the same division of labor as the original.
+  "Lyon"). JuL never generates text.
+- **The action space comes from the accessibility tree.** Instead of DOM
+  heuristics, [`agent_ax.py`](browser-agent/agent_ax.py) reads the AX tree over
+  CDP, so every control carries its true role and accessible name ("Départ :",
+  "Arrivée :", "Voir les prix"). This is what makes real, complex pages tractable.
+- **The code owns the loop.** Observation, an anti-loop guard, an action budget,
+  goal-driven date selection, and independent outcome verification live in the
+  harness, not the model — the same division of labor as the original.
 
 Nothing leaves the Mac: no cloud, no API key, no cost. This is *more* on-device
 than the original, which calls a hosted model for text.
 
 ```
-OBSERVE  Playwright + snapshot.js  → indexed action table
-DECIDE   JuL system_one (fan-out): operation + click/type/select targets   [~250 ms/step]
-WRITE    if TYPE_TEXT → Apple Foundation Model generates the value          [~300 ms, warm]
-ACT      Playwright executes; freshness + anti-loop guards
+OBSERVE  CDP Accessibility.getFullAXTree  → role + accessible-name action table
+DECIDE   JuL system_one (fan-out): operation + target                  [~130 ms/step]
+WRITE    if TYPE_TEXT → Apple Foundation Model generates the value      [~300 ms, warm]
+ACT      act on the real node (backendDOMNodeId); anti-loop guard
 LOOP     re-observe → new action space
 ```
 
-Measured on a bundled local demo site (multi-step flight search), Apple M-series:
+Measured on a real SNCF Connect session (Apple M-series), matched to
+jev-ultrafast's discipline (both models warmed up before the clock, initial
+navigation excluded, independent outcome verification):
 
 ```
-Goal: "round-trip flights from Zurich to London in economy, stop at results"
-→ TYPE_TEXT Where from?   fm→ "Zurich"
-→ TYPE_TEXT Where to?     fm→ "London"
-→ SELECT    Cabin class   JuL→ economy
-→ CLICK     Search flights
-✓ DONE      (results visible)
-5 steps · ~7 s wall · JuL ~280 ms/step · $0.00
+Goal: "one-way train from Lyon to Toulouse in 3 days, stop at results"
+→ TYPE_TEXT Rechercher   fm→ "Lyon"        (home search)
+→ TYPE_TEXT Départ :      fm→ "Lyon"
+→ TYPE_TEXT Arrivée :     fm→ "Toulouse"
+→ SET_DATE  dimanche 27 septembre 2026     (today + 3 days, harness-matched)
+→ CLICK     Voir les prix
+✓ results reached & VERIFIED (Lyon + Toulouse + prices on the page)
+6 steps · JuL ~130 ms/decision median · $0.00
 ```
 
-It generalizes to other goals (e.g. one-way Paris→Tokyo in business) with no
-site-specific scripting. See [`browser-agent/`](browser-agent/) for the loop.
+No site-specific scripting: the agent decides only from the action space.
 
 ## Setup
 
@@ -154,21 +159,14 @@ The browser agent needs Playwright and the Apple Foundation Models CLI
 ```bash
 pip install playwright && python -m playwright install chromium
 sudo fm license            # one-time, accept Apple's terms; check with: fm available
-
-python browser-agent/run.py                    # drives a bundled local demo site
-python browser-agent/run.py --headed           # watch the browser window
 ```
 
-If `fm` is unavailable, the agent still runs but skips text entry (it only
-decides operations/targets).
-
-The same brain can also drive a **real, bot-protected site** by attaching to
-**your own browser** over CDP — the browser-use / jev-ultrafast approach, where
-the model talks to your real Chrome/Arc rather than a throwaway Chromium (which
-anti-bot systems block). Here the action space comes from the **accessibility
-tree** ([`agent_ax.py`](browser-agent/agent_ax.py)), which gives each control its
-true role and accessible name ("Départ :", "Arrivée :", "Voir les prix") — far
-more robust than DOM heuristics on complex pages.
+The agent attaches to **your own browser** over CDP — the browser-use /
+jev-ultrafast approach, where the model talks to your real Chrome/Arc rather than
+a throwaway Chromium (which anti-bot systems block). The action space comes from
+the **accessibility tree** ([`agent_ax.py`](browser-agent/agent_ax.py)), which
+gives each control its true role and accessible name ("Départ :", "Arrivée :",
+"Voir les prix") — far more robust than DOM heuristics on complex pages.
 
 ```bash
 # 1) launch your browser with remote debugging, open the site, pass consent by hand:
@@ -178,18 +176,23 @@ more robust than DOM heuristics on complex pages.
 # 2) let the on-device agent drive it (JuL decides, Apple FM writes):
 python browser-agent/run_cdp.py --url https://www.sncf-connect.com \
     --goal "Book a one-way train from Lyon to Toulouse in 3 days, stop at results"
+
+# optional: record a screencast of the run
+python browser-agent/record_run.py
 ```
+
+If `fm` is unavailable, the agent still runs but skips text entry (it only
+decides operations/targets).
 
 Measured on a real SNCF Connect session (Apple M-series), matched to
 jev-ultrafast's discipline (both models warmed up before the clock, initial
 navigation excluded, independent outcome verification): 6 steps, JuL decision
 ~130 ms median, Apple FM writing the cities, results reached and verified — all
-on-device for $0. `record_run.py` captures a screencast of the run.
+on-device for $0.
 
 Honest scope: real sites are dynamic and non-deterministic; the accessibility
 tree makes field/target detection reliable, but heavily fortified sites (DataDome
-CAPTCHAs, etc.) still require your own trusted session. The bundled local demo
-site (`run.py`) completes the full flow end-to-end every time.
+CAPTCHAs, etc.) require your own trusted session (hence driving your real browser).
 
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
 `JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage
