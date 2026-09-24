@@ -59,8 +59,20 @@ def run(goal: str, model: str, headed: bool, keep_open: bool) -> None:
 
         wall_ms = int((time.perf_counter() - t0) * 1000)
         url_now = page.url
-        # Independent outcome check: Flights puts a results view under /search or shows result cards.
-        reached = "/search" in url_now or page.get_by_role("main").get_by_text("Zurich").count() > 0
+        # Outcome check: both cities entered, and result-like content on the page.
+        try:
+            has_from = page.get_by_role("combobox", name="Where from?").first.input_value()
+        except Exception:
+            has_from = ""
+        import re
+        body = ""
+        try:
+            body = page.inner_text("body")
+        except Exception:
+            pass
+        cities_ok = ("Zurich" in body or "Zürich" in body) and "London" in body
+        priced = bool(re.search(r"[€$£]\s?\d", body))
+        reached = "/search" in url_now or (cities_ok and priced)
         if keep_open and headed:
             print("\n(keeping browser open 20s for inspection)")
             page.wait_for_timeout(20000)

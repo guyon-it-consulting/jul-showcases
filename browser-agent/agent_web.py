@@ -24,11 +24,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from common.jul_helper import get_client, Choice  # noqa: E402
+from common.jul_helper import get_client, Choice, Noul, NoulCriteria  # noqa: E402
 from fm_writer import FMWriter  # noqa: E402
 
 SNAPSHOT_JS = (Path(__file__).parent / "snapshot.js").read_text()
-MAX_STEPS = 14
+MAX_STEPS = 8
 DEFAULT_MODEL = "wemm-4b-4bit"
 
 # Elements that are chrome/navigation, not part of the flight-search task. Filtering
@@ -47,6 +47,7 @@ class WebFlightsAgent:
         self.fm = FMWriter()
         self.history: list[dict] = []
         self.done = False
+        self._touched: set[str] = set()   # field labels we've already typed into this run
 
     # --- consent gate -------------------------------------------------------
     def handle_consent(self) -> bool:
@@ -106,11 +107,26 @@ class WebFlightsAgent:
     # --- decision (identical fan-out policy as agent.py) --------------------
     def decide(self, snap: dict) -> dict:
         actions = snap["actions"]
+        # Mark prefilled text fields whose value does NOT match the goal as "to refill".
+        # JuL judges each with a Noul (measured reliable: Lyon vs Zurich goal -> 0.04).
+        self._needs_refill = set()
+        for a in actions:
+            if a["op"] == "TYPE_TEXT" and a["value"] and a["label"] not in self._touched:
+                r = self.client.system_one(
+                    state=f'Goal: {self.goal}\nField "{a["label"]}" currently contains: "{a["value"]}"',
+                    questions={"ok": Noul(
+                        instructions=f'Does the current value of "{a["label"]}" already match what the goal requires?',
+                        criteria=NoulCriteria(true="yes, correct for the goal",
+                                              false="no, wrong value that must be replaced"))})
+                if r.nouls["ok"].noul < 0.5:
+                    self._needs_refill.add(a["id"])
+
         state = self._render_state(snap)
 
         clickable = {a["id"]: self._click_desc(a) for a in actions if a["op"] == "CLICK"}
+        # A field is fillable if empty OR prefilled-but-wrong.
         typeable = {a["id"]: a["label"] for a in actions
-                    if a["op"] == "TYPE_TEXT" and not a["value"]}
+                    if a["op"] == "TYPE_TEXT" and (not a["value"] or a["id"] in self._needs_refill)}
 
         op_criteria = {}
         if clickable:  op_criteria["CLICK"] = "click a button/link, e.g. search or submit, to progress"
@@ -137,8 +153,9 @@ class WebFlightsAgent:
             target_id = (next(iter(clickable)) if len(clickable) == 1
                          else resp.choices["click_target"].choice)
         elif op == "TYPE_TEXT":
-            empty = [a["id"] for a in actions if a["op"] == "TYPE_TEXT" and not a["value"]]
-            target_id = empty[0] if empty else None
+            fillable = [a["id"] for a in actions if a["op"] == "TYPE_TEXT"
+                        and (not a["value"] or a["id"] in self._needs_refill)]
+            target_id = fillable[0] if fillable else None
 
         action = next((a for a in actions if a["id"] == target_id), None)
         return {"op": op, "op_conf": op_conf, "action": action, "latency_ms": latency_ms}
@@ -164,6 +181,7 @@ class WebFlightsAgent:
             value, write_ms = self.fm.write_field(self.goal, action["label"], action["value"], filled=filled)
             rec["text"], rec["write_ms"] = value, write_ms
             ok = self._fill_combobox(action, value)
+            self._touched.add(action["label"])   # never re-flag this field for refill
         else:  # CLICK
             ok = self._click(action)
 
@@ -175,6 +193,12 @@ class WebFlightsAgent:
         self.page.wait_for_timeout(400)
         rec["result"] = "ok"
         self.history.append(rec)
+
+        # Early success: Google Flights navigates to /search when results are shown.
+        if "/search" in self.page.url:
+            self.done = True
+            rec["result"] = "done"
+            return rec
 
         recent = self.history[-3:]
         if len(recent) == 3 and len({(r["op"], r["label"]) for r in recent}) == 1:

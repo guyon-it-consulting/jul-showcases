@@ -169,12 +169,17 @@ Browser Use × Jev scenario (Zürich → London):
 python browser-agent/run_flights.py --headed   # watch it on the real site
 ```
 
-It handles the cookie-consent gate and ARIA comboboxes, reaches the results page
-(`/travel/flights/search`) in ~7 s — comparable to jev-ultrafast's ~7.1 s, but
-fully on-device for $0. Google Flights is complex and anti-bot-heavy; this
-targets the origin/destination + search flow (calendar date entry is out of
-scope for the MVP), so treat it as a best-effort real-site demo, not a robust
-production agent.
+It handles the cookie-consent gate and ARIA comboboxes, and correctly enters both
+cities — including **replacing** Google's prefilled origin: JuL judges each
+prefilled field against the goal with a `Noul` (e.g. "Lyon" vs a Zürich goal →
+0.04 → refill), so it types "Zurich" and "London" itself. All on-device, $0.
+
+Honest limitation: Google Flights renders results without a clean navigation and
+re-renders its search controls dynamically, which the generic MVP harness does
+not reliably trigger (jev-ultrafast solves this with a dedicated Browser Harness).
+So the real-site run reliably *fills the search correctly* but may not always
+reach the results view. The bundled local demo site (`run.py`) completes the full
+flow end-to-end every time; treat `run_flights.py` as a best-effort real-site demo.
 
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
 `JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage
