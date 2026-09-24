@@ -18,9 +18,49 @@ slow or too expensive.
 | [`intent-reranker/`](intent-reranker/) | Upweight for HN / Jev Search | Re-rank a fixed list of items by a plain-language intent. | `Score` |
 | [`notification-triage/`](notification-triage/) | Quiet marketing notifications | Classify each notification as ad/marketing noise vs. important. | `Noul` |
 | [`prompt-difficulty/`](prompt-difficulty/) | Prompt difficulty classifier | Rate a prompt easy/hard before sending, to offer a "fast mode". | `Score` |
+| [`ticket-triage-scale/`](ticket-triage-scale/) | Support-ticket triage at volume | Route **millions** of real support tickets, measuring real throughput and cost vs a hosted API. | `Choice` |
+| [`ticket-triage-autoscale/`](ticket-triage-autoscale/) | The autoscale value | `autotune` lifts a fast model's accuracy (+14.5 pts) in seconds, with throughput preserved. | `Choice` + `autotune` |
 
-All four share one thin helper, [`common/jul_helper.py`](common/jul_helper.py),
-which owns the single `TypeSafeClient` so the model is loaded once and reused.
+The first four share one thin helper, [`common/jul_helper.py`](common/jul_helper.py),
+which owns the single `TypeSafeClient` so the model is loaded once and reused. The
+two ticket-triage demos add [`ticket-triage-scale/openjev.py`](ticket-triage-scale/openjev.py),
+a loader for the public [Open-Jev](https://huggingface.co/datasets/ZefanCai/Open-Jev)
+support-ticket dataset (CC0-1.0).
+
+## Scale & autoscale: triaging millions of tickets
+
+The two ticket-triage showcases use **real** support tickets from Open-Jev and
+answer the question "can JuL triage a huge volume, fast, and well?".
+
+**Scale** ([`ticket-triage-scale/`](ticket-triage-scale/)) routes tickets in one
+batched pass and measures real throughput. Measured on Apple Silicon with the fast
+`qwen3-embedding-0.6b` model, on real ticket text:
+
+```
+Triaged 50,000 tickets in 668 s   ->  ~75 tickets/second, 82.9% accuracy, $0.00
+Extrapolated: 1,000,000 tickets  ->  ~3.7 h local, $0.00
+              (a hosted LLM API at ~250 ms/call, 50x parallel, would be ~$400)
+```
+
+Throughput depends on ticket length (long conversations cost more tokens than
+short messages), so the demo always reports the number it actually measured on
+your machine, then extrapolates.
+
+**Autoscale** ([`ticket-triage-autoscale/`](ticket-triage-autoscale/)) shows the
+real value of `client.autotune(...)`: a tiny per-task head trained on a few
+hundred labeled tickets, with the model's weights untouched. Measured on real
+tickets (train=500, test=200):
+
+```
+                 accuracy    throughput
+  zero-shot        82.0%       134 t/s
+  autotuned        96.5%       136 t/s     (head trained in 6.2 s)
+  ----------------------------------------
+  +14.5 points accuracy, throughput preserved
+```
+
+So the fast model keeps its throughput and gains the accuracy of a much larger
+one — millions of tickets triaged both fast *and* well, locally, for $0.
 
 ## Setup
 
@@ -53,8 +93,21 @@ python notification-triage/run.py
 python prompt-difficulty/run.py
 ```
 
+The two ticket-triage demos need the Hugging Face `datasets` library and a fast
+model registered (they default to `qwen3-embedding-0.6b`):
+
+```bash
+pip install datasets
+jul models add qwen3-embedding-0.6b --repo mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ
+
+python ticket-triage-scale/run.py --n 50000        # throughput + million-scale extrapolation
+python ticket-triage-autoscale/run.py              # zero-shot vs autotuned accuracy
+```
+
 To use a different model without touching code, set `JUL_SHOWCASE_MODEL`, e.g.
-`JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`.
+`JUL_SHOWCASE_MODEL=minicpm5-2b python intent-reranker/run.py`. The ticket-triage
+demos take `--model` directly (e.g. `--model wemm-4b-4bit` for higher accuracy at
+lower throughput).
 
 No API key, no network at run time, nothing generated — JuL is stopped one step
 before its first token and the answer is read straight out of its head.
