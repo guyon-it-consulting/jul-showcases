@@ -8,7 +8,36 @@ deploy.
 
 ```console
 $ python qa-browser/run.py qa-browser/tickets/truffaut-arrosoir.md
+
+→  1. Si une bannière cookies s'affiche, cliquer "Accepter et fermer"
+     CLICK button « Accepter et fermer »   [jul 1.00]
+→  2. Rechercher "arrosoir luxe"
+     TYPE  search / input field « Je cherche une plante, un conseil... »  ⌨ "arrosoir luxe"   [jul 1.00]
+→  3. Ouvrir le produit "Arrosoir luxe : 15L"
+     CLICK link « Arrosoir luxe : 15L … 19,99€ »   [jul 1.00]
+→  4. Cliquer "Ajouter au panier"
+     CLICK button « Ajouter au panier »   [jul 0.99]
+→  5. Ouvrir "Mon panier"
+     CLICK link « Mon panier »   [jul 1.00]
+→  6. Cliquer "Voir votre panier"
+     CLICK link « Voir votre panier »   [jul 1.00]
+
+Critères de validation
+  ✓ La page "Mon panier" est affichée   (JuL 0.96)
+  ✓ Le panier contient "Arrosoir luxe : 15L"   (JuL 0.94)
+  ✓ Le bouton "Valider ma commande" est visible   (JuL 0.99)
+
+PASS — 6 steps, 3 criteria
+JuL: 9 decisions, 0 tokens generated, $0.00
 ```
+
+▶️ **[Watch the screencast: `qa-browser/demo_truffaut.mp4`](demo_truffaut.mp4)**: a real run on
+truffaut.com, recorded with `record_run.py`. Frames are grabbed around each action, so the time
+JuL spends deciding is cut; the real decision time is shown in each caption.
+
+Measured on a CPU-only Linux box (8 cores, PyTorch, `wemm-4b-4bit`): ~20 s per decision, 5.5 min
+for the first run, 1.5 min for `--replay` (3 decisions instead of 9). Expect far less on Apple
+Silicon with MLX; not measured yet.
 
 ## The PO format
 

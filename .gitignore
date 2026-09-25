@@ -25,3 +25,4 @@ browser-agent/frames/
 
 # Vetted demo video (logged-out session, no personal data) — allowed explicitly
 !browser-agent/demo_sncf.mp4
+!qa-browser/demo_truffaut.mp4
