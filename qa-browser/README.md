@@ -1,10 +1,11 @@
 # qa-browser — the PO writes the test, JuL runs it
 
-A Product Owner writes an acceptance test in plain French, inside the ticket. JuL runs it in a
-real browser and says whether the ticket passes. **JuL is the only model**: it picks every element
-and checks every criterion, and it never writes anything. The only text it types is the text the
-PO put in quotes. No API key, no token generated, $0 per run, so you can rerun it on every
-deploy.
+A Product Owner writes an acceptance test in plain words (French or English), inside the ticket.
+JuL runs it in a real browser and says whether the ticket passes. **JuL is the only model**: it
+picks every element and checks every criterion, and it never writes anything. The only text it
+types is the text the PO put in quotes. No API key, no token generated, $0 per run, so you can
+rerun it on every deploy. Nothing in the code is tied to a site: the two demo tickets run on two
+different shops, in two languages, with the same code.
 
 ```console
 $ python qa-browser/run.py qa-browser/tickets/truffaut-arrosoir.md
@@ -29,14 +30,36 @@ Critères de validation
 
 PASS — 6 steps, 3 criteria
 JuL: 9 decisions, 0 tokens generated, $0.00
+
+$ python qa-browser/run.py qa-browser/tickets/wordery-hobbit.md
+
+→  1. If a cookie banner appears, click "Accept All"
+     CLICK button « Accept All »   [jul 0.98]
+→  2. Search for "The Hobbit"
+     TYPE  input field « Enter a Title, author, keyword or ISBN »  ⌨ "The Hobbit"   [jul 1.00]
+→  3. Open the book "The Hobbit, or, There and Back Again"
+     CLICK link « The Hobbit, or, There and Back Again »   [jul 0.61]
+→  4. Click "Add to basket"
+     CLICK button « Add to basket »   [jul 1.00]
+→  5. Open the "Basket"
+     CLICK link « Basket 1 »   [jul 1.00]
+
+Acceptance criteria
+  ✓ The "Basket" page is displayed   (JuL 1.00)
+  ✓ The basket contains "The Hobbit, or, There and Back Again"   (JuL 0.98)
+  ✓ The "Next: Delivery" button is visible   (JuL 0.82)
+
+PASS — 5 steps, 3 criteria
+JuL: 8 decisions, 0 tokens generated, $0.00
 ```
 
-▶️ **[Watch the screencast: `qa-browser/demo_truffaut.mp4`](demo_truffaut.mp4)**: a real run on
-truffaut.com, recorded with `record_run.py`. Frames are grabbed around each action, so the time
-JuL spends deciding is cut; the real decision time is shown in each caption.
+▶️ **[Watch the screencast: `qa-browser/demo.mp4`](demo.mp4)**: the two tickets back to back, a
+real run on truffaut.com (French) then wordery.com (English), recorded with
+`python qa-browser/record_run.py`. Frames are grabbed around each action, so the time JuL spends
+deciding is cut; the real decision time is shown in each caption.
 
-Measured on a CPU-only Linux box (8 cores, PyTorch, `wemm-4b-4bit`): ~20 s per decision, 5.5 min
-for the first run, 1.5 min for `--replay` (3 decisions instead of 9). Expect far less on Apple
+Measured on a CPU-only Linux box (8 cores, PyTorch, `wemm-4b-4bit`): ~20 s per decision, 6-7 min
+per ticket on the first run, 1.5 min for `--replay` (criteria only). Expect far less on Apple
 Silicon with MLX; not measured yet.
 
 ## The PO format
@@ -70,24 +93,30 @@ Four rules, and that's all:
 3. **Anything in "quotes" is copied verbatim from the site**: a button label, a product name, or
    the text to type. It is the one thing the PO must get exactly right, and it is exactly what
    they see on the screen.
-4. **A step starting with *Si* is optional.** When it does not apply (no cookie banner this
-   time), it is skipped instead of failing.
+4. **A step starting with *Si* / *If* is optional.** When it does not apply (no cookie banner
+   this time), it is skipped instead of failing.
 
-Each bullet under **Critères de validation** is a yes/no question about the final page. The ticket
-passes when every criterion passes.
+The same format works in English: `## Steps` and `## Acceptance criteria` (see
+[`tickets/wordery-hobbit.md`](tickets/wordery-hobbit.md)).
+
+Each bullet under **Critères de validation** / **Acceptance criteria** is a yes/no question about
+the final page. The ticket passes when every criterion passes.
 
 ## What JuL decides
 
 ```
 OBSERVE  CDP Accessibility.getFullAXTree   → every named control: role + accessible name
 DECIDE   Choice  operation (click / type) + target element, one system_one call per step
-         Noul    optional step: is this element really the one the step talks about?
-ACT      click the node, or type the quoted text + Enter
-VERIFY   Noul    per criterion, on the title, main heading, matching controls and page text
+                 (an optional step also gets "none of these": JuL can say it does not apply)
+ACT      a real mouse click on the node, or type the quoted text + Enter; then wait until the
+         site's own requests (add to cart, search) are done
+VERIFY   Choice  "the "X" page is displayed": which page is this, from its title and heading
+         Noul    any other criterion, on the title, main heading, matching controls and page text
 ```
 
 The harness only does mechanical work: it reads the accessibility tree and keeps the ~10 controls
-whose names share words with the step. The choice among them is JuL's.
+whose names share words with the step. The choice among them is JuL's. There is no site-specific
+code: no CSS selector, no URL rule, no label list.
 
 ## Replay for $0
 
@@ -118,5 +147,5 @@ google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.qa-agent"
 python qa-browser/run.py my-ticket.md --cdp http://localhost:9222
 ```
 
-The demo site is **truffaut.com**, a real French garden store. The flow stops at the cart:
-nothing is ever ordered.
+The demo sites are **truffaut.com** (a French garden store) and **wordery.com** (a UK
+bookshop). Both flows stop at the cart: nothing is ever ordered.

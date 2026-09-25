@@ -41,6 +41,7 @@ class Ticket:
     site: str
     steps: list[Step] = field(default_factory=list)
     criteria: list[Step] = field(default_factory=list)
+    lang: str = "fr"            # "en" when the section headings are English
 
 
 def _item(line: str) -> Step:
@@ -50,7 +51,7 @@ def _item(line: str) -> Step:
 
 
 def parse(md: str) -> Ticket:
-    title, site, section = "", "", None
+    title, site, section, lang = "", "", None, "fr"
     steps, criteria = [], []
     for raw in md.splitlines():
         line = raw.strip()
@@ -65,6 +66,8 @@ def parse(md: str) -> Ticket:
             continue
         if line.startswith("#"):
             low = line.lower()
+            if re.search(r"\b(steps?|acceptance|criteria)\b", low):
+                lang = "en"
             section = ("steps" if ("étape" in low or "etape" in low or "step" in low) else
                        "criteria" if ("critère" in low or "critere" in low or "criteria" in low
                                       or "validation" in low) else None)
@@ -77,4 +80,4 @@ def parse(md: str) -> Ticket:
         raise ValueError("ticket has no 'Site : <url>' line")
     if not steps:
         raise ValueError("ticket has no numbered steps under '## Étapes'")
-    return Ticket(title=title, site=site, steps=steps, criteria=criteria)
+    return Ticket(title=title, site=site, steps=steps, criteria=criteria, lang=lang)

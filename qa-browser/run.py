@@ -37,7 +37,8 @@ TYPE_ROLES = {"textbox", "searchbox", "combobox"}
 SHORTLIST = 10          # candidates shown to JuL per operation family
 STOP = set("le la les un une des du de d l au aux et ou sur dans en à a s si the to of on in "
            "cliquer clique cliquez aller va ouvrir ouvre rechercher recherche chercher saisir "
-           "taper vérifier verifier est sont page produit bouton lien".split())
+           "taper vérifier verifier est sont page produit bouton lien "
+           "an for if click open go into enter type book button link is".split())
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 
@@ -56,6 +57,19 @@ class Page:
         self.cdp = page.context.new_cdp_session(page)
         self.cdp.send("DOM.enable")
         self.cdp.send("Accessibility.enable")
+        # The site's own XHR/fetch calls in flight (add to cart, search suggestions...). Trackers are
+        # ignored: they never go idle. settle() waits for these, so an action is never cut short.
+        self.pending: set = set()
+        done = lambda r: self.pending.discard(r)  # noqa: E731
+        page.on("request", lambda r: self.pending.add(r) if self._own(r) else None)
+        page.on("requestfinished", done)
+        page.on("requestfailed", done)
+
+    def _own(self, req) -> bool:
+        if req.resource_type not in ("xhr", "fetch"):
+            return False
+        host = lambda u: ".".join(re.sub(r"^https?://([^/:]+).*", r"\1", u).split(".")[-2:])  # noqa: E731
+        return host(req.url) == host(self.page.url)
 
     def elements(self) -> list[dict]:
         """Every named, actionable control exposed to a screen reader, deduplicated."""
@@ -73,6 +87,8 @@ class Page:
             name = ((n.get("name") or {}).get("value") or "").strip()
             if not name and op == "type":
                 name = self._placeholder(n["backendDOMNodeId"])
+            if op == "click" and len(name) <= 3:
+                name = self._context_name(n["backendDOMNodeId"]) or name   # icon + badge, e.g. "1"
             name = re.sub(r"\s+", " ", name)[:90]
             if not name or (op, role, name) in seen:
                 continue
@@ -87,6 +103,19 @@ class Page:
             return ""
         a = dict(zip(attrs[::2], attrs[1::2]))
         return a.get("aria-label") or a.get("placeholder") or a.get("title") or ""
+
+    def _context_name(self, node: int) -> str:
+        """A control whose accessible name is only a badge ("1") is named by the text around it
+        ("Basket 1"): the closest ancestor, at most two levels up, with a short readable text."""
+        try:
+            oid = self.cdp.send("DOM.resolveNode", {"backendNodeId": node})["object"]["objectId"]
+            r = self.cdp.send("Runtime.callFunctionOn", {"objectId": oid, "returnByValue": True,
+                "functionDeclaration": "function(){let e=this;for(let i=0;i<2&&e.parentElement;i++){"
+                                       "e=e.parentElement;const t=(e.innerText||'').replace(/\\s+/g,' ').trim();"
+                                       "if(t.length>3&&t.length<=40)return t;}return '';}"})
+            return r["result"].get("value") or ""
+        except Exception:
+            return ""
 
     def visible(self, el: dict) -> bool:
         try:
@@ -109,6 +138,15 @@ class Page:
         except Exception:
             pass                                                # trackers can keep a page busy forever
         self.page.wait_for_timeout(ms)
+        for _ in range(60):                                     # the site's own calls, up to ~30 s more
+            if not self.pending:
+                break
+            self.page.wait_for_timeout(500)
+        self.pending.clear()
+        try:
+            self.cdp.detach()
+        except Exception:
+            pass
         self.cdp = self.page.context.new_cdp_session(self.page)   # a navigation drops the old one
         self.cdp.send("DOM.enable")
         self.cdp.send("Accessibility.enable")
@@ -148,7 +186,7 @@ class Page:
         keep = sorted({j for i in hits for j in range(max(0, i - 1), min(len(lines), i + 2))})
         excerpt = " | ".join(lines[j] for j in keep)[:700] or " | ".join(lines[:15])[:500]
         controls = [e["name"] for e in self.elements() if keys & words(e["name"])][:6]
-        heads = " | ".join(h.strip() for h in p.locator("h1").all_inner_texts()[:2])
+        heads = " | ".join(h.strip() for h in p.locator("h1").all_inner_texts()[:2] if h.strip()) or p.title()
         return (f"Page title: {p.title()}\nMain heading: {heads}\n"
                 f"Controls on the page: {' ; '.join(controls) or '(none matching)'}\n"
                 f"Page text: {excerpt}")
@@ -214,6 +252,16 @@ class Brain:
         return op, (None if a.choice == "none" else fams[op][int(a.choice)]), a.confidence
 
     def check(self, criterion: Step, evidence: str) -> float:
+        # "The "X" page is displayed": a Choice on the page's title and heading only. Asked as a
+        # free Noul over the whole page text, JuL is fooled by a header link that says "X" on any page.
+        m = re.search(r"(?i)\b(page|écran|ecran|screen)\b", criterion.text)
+        if m and criterion.quoted:
+            head = "\n".join(evidence.splitlines()[:2])          # "Page title: ..." + "Main heading: ..."
+            r = self.ask(head, {"p": Choice(instructions="What kind of page is the browser showing?",
+                                            criteria={"target": f'the "{criterion.quoted[0]}" page itself',
+                                                      "other": "another page (a product page, a search page, "
+                                                               "the home page...)"})})
+            return r.choices["p"].probabilities["target"]
         r = self.ask(f"Acceptance criterion: {criterion.text}\n{evidence}",
                      {"ok": Noul(instructions="Does the page satisfy this acceptance criterion?",
                                  criteria=NoulCriteria(true="satisfied, the page shows it",
@@ -242,7 +290,8 @@ def run(ticket: Ticket, args) -> int:
         else:
             browser = p.chromium.launch(headless=not args.headed,
                                         executable_path=args.chrome or os.environ.get("QA_CHROME") or None)
-            ctx = browser.new_context(user_agent=UA, locale="fr-FR", viewport={"width": 1366, "height": 900})
+            ctx = browser.new_context(user_agent=UA, locale="en-GB" if ticket.lang == "en" else "fr-FR",
+                                      viewport={"width": 1366, "height": 900})
         tab = ctx.new_page()
         tab.goto(ticket.site, wait_until="domcontentloaded", timeout=60000)
         page = Page(tab)
@@ -287,7 +336,8 @@ def run(ticket: Ticket, args) -> int:
             steps_out.append({"step": step.text, "op": op, "role": el["role"], "name": el["name"],
                               "conf": round(conf, 3), "how": how})
 
-        print(f"\nPage reached: {tab.title()}  ({tab.url})\n\nCritères de validation")
+        print(f"\nPage reached: {tab.title()}  ({tab.url})\n\n"
+              + ("Acceptance criteria" if ticket.lang == "en" else "Critères de validation"))
         results = []
         for c in ([] if failed else ticket.criteria):
             p_ok = brain.check(c, page.evidence(c))
