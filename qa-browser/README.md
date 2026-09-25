@@ -64,6 +64,30 @@ Silicon with MLX; not measured yet.
 
 ## The PO format
 
+The PO writes the ticket in English ([`tickets/wordery-hobbit.md`](tickets/wordery-hobbit.md)):
+
+```markdown
+# Ticket QA-102 — Add a book to the basket from search
+
+Site : https://www.wordery.com/
+
+## Steps
+
+1. If a cookie banner appears, click "Accept All".
+2. Search for "The Hobbit".
+3. Open the book "The Hobbit, or, There and Back Again".
+4. Click "Add to basket".
+5. Open the "Basket".
+
+## Acceptance criteria
+
+- The "Basket" page is displayed.
+- The basket contains "The Hobbit, or, There and Back Again".
+- The "Next: Delivery" button is visible.
+```
+
+or in French ([`tickets/truffaut-arrosoir.md`](tickets/truffaut-arrosoir.md)):
+
 ```markdown
 # Ticket QA-101 — Ajouter un arrosoir au panier depuis la recherche
 
@@ -88,18 +112,16 @@ Site : https://www.truffaut.com/
 Four rules, and that's all:
 
 1. **`Site :`** is the starting URL.
-2. **One action per numbered step**, in the PO's own words: *cliquer*, *rechercher*, *ouvrir*,
-   *aller à*… There is no fixed vocabulary; JuL maps the sentence to an element on the page.
+2. **One action per numbered step**, in the PO's own words: *click*, *search for*, *open*,
+   *cliquer*, *rechercher*… There is no fixed vocabulary; JuL maps the sentence to an element on
+   the page.
 3. **Anything in "quotes" is copied verbatim from the site**: a button label, a product name, or
    the text to type. It is the one thing the PO must get exactly right, and it is exactly what
    they see on the screen.
-4. **A step starting with *Si* / *If* is optional.** When it does not apply (no cookie banner
+4. **A step starting with *If* / *Si* is optional.** When it does not apply (no cookie banner
    this time), it is skipped instead of failing.
 
-The same format works in English: `## Steps` and `## Acceptance criteria` (see
-[`tickets/wordery-hobbit.md`](tickets/wordery-hobbit.md)).
-
-Each bullet under **Critères de validation** / **Acceptance criteria** is a yes/no question about
+Each bullet under **Acceptance criteria** / **Critères de validation** is a yes/no question about
 the final page. The ticket passes when every criterion passes.
 
 ## What JuL decides
