@@ -128,6 +128,7 @@ scale showcase that triages **millions** of real support tickets (see below).
 | [`ticket-triage-scale/`](ticket-triage-scale/) | Support-ticket triage at volume | Route **millions** of real support tickets, measuring real throughput and cost vs a hosted API. | `Choice` |
 | [`ticket-triage-autoscale/`](ticket-triage-autoscale/) | The autoscale value | `autotune` lifts a fast model's accuracy (+14.5 pts) in seconds, with throughput preserved. | `Choice` + `autotune` |
 | [`browser-agent/`](browser-agent/) | A faster browser agent (Browser Use × Jev) | A **fully on-device** browser agent: JuL picks the operation + target each step; the Apple Foundation Model writes field text. | `Choice` (fan-out) |
+| [`qa-browser/`](qa-browser/) | QA from the ticket | The PO writes the acceptance test in plain French; JuL alone runs it in a real browser (French or English, any site) and checks each criterion. `--replay` reruns it for $0. | `Choice` + `Noul` |
 
 The first four share one thin helper, [`common/jul_helper.py`](common/jul_helper.py),
 which owns the single `TypeSafeClient` so the model is loaded once and reused. The
