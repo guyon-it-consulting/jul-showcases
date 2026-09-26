@@ -1,4 +1,4 @@
-# Ticket QA-101 — Ajouter un arrosoir au panier depuis la recherche
+# Ticket QA-101 — Ajouter un arrosoir au panier et finaliser la commande
 
 Site : https://www.truffaut.com/
 
@@ -8,11 +8,10 @@ Site : https://www.truffaut.com/
 2. Rechercher "arrosoir luxe".
 3. Ouvrir le produit "Arrosoir luxe : 15L".
 4. Cliquer "Ajouter au panier".
-5. Ouvrir "Mon panier".
-6. Cliquer "Voir votre panier".
+5. Cliquer "Finaliser votre commande".
 
 ## Critères de validation
 
-- La page "Mon panier" est affichée.
-- Le panier contient "Arrosoir luxe : 15L".
-- Le bouton "Valider ma commande" est visible.
+- Le titre "Connexion / Inscription" est affiché.
+- Le lien "Revenir au panier" est visible.
+- Le champ "Saisissez votre email" est visible.

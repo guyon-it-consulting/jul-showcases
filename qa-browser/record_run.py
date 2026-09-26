@@ -25,22 +25,14 @@ FRAMES = HERE / "frames"
 FPS = 5
 S = {"page": None, "n": 0, "ticket": None, "step": None, "dec": None, "crit": [], "intro": False}
 
-T = {
-    "fr": {"site": "Site", "step": "Étape", "po": "PO", "crit": "Critères de validation",
-           "checked": "Critères de validation — vérifiés par JuL sur la page",
-           "tag": "Le PO écrit le test en français. JuL le joue dans un vrai navigateur.",
-           "jul": "JuL, confiance {c:.2f}, décision en {s:.0f} s", "replay": "rejoué depuis la trace",
-           "skip": "JuL : rien à faire ici, étape facultative ignorée",
-           "sum": "{r} — {n} étapes, {k} critères, {d} décisions JuL, 0 €",
-           "foot": "Rejouable à volonté avec --replay : JuL ne revient que si la page a changé."},
-    "en": {"site": "Site", "step": "Step", "po": "PO", "crit": "Acceptance criteria",
-           "checked": "Acceptance criteria — checked by JuL on the page",
-           "tag": "The PO writes the test in English. JuL runs it in a real browser.",
-           "jul": "JuL, confidence {c:.2f}, decided in {s:.0f} s", "replay": "replayed from the trace",
-           "skip": "JuL: nothing to do here, optional step skipped",
-           "sum": "{r} — {n} steps, {k} criteria, {d} JuL decisions, $0",
-           "foot": "Replay at will with --replay: JuL only comes back if the page changed."},
-}
+TEXT = {"site": "Site", "step": "Step", "po": "Product Manager", "crit": "Acceptance criteria",
+        "assert": "In-journey assertion — checked by JuL on the page",
+        "checked": "Acceptance criteria — checked by JuL on the page",
+        "tag": "The Product Manager writes the test in English. JuL runs it in a real browser.",
+        "jul": "JuL, confidence {c:.2f}, decided in {s:.0f} s", "replay": "replayed from the trace",
+        "skip": "JuL: nothing to do here, optional step skipped",
+        "sum": "{r} — {n} steps, {k} criteria, {d} JuL decisions, $0",
+        "foot": "Replay at will with --replay: JuL only comes back if the page changed."}
 
 OVERLAY = """(a) => {
   let o = document.getElementById('qa-ov');
@@ -59,7 +51,7 @@ OK, KO = "color:#4ade80;font-weight:600", "color:#f87171;font-weight:600"
 
 
 def tr():
-    return T[S["ticket"].lang]
+    return TEXT
 
 
 def show(lines, card=False, frames=6):
@@ -155,6 +147,12 @@ def type_(self, el, text):
 
 def check(self, criterion, evidence):
     p = orig_check(self, criterion, evidence)
+    L = tr()
+    if getattr(criterion, "check", False):                  # a mid-journey assertion, not a final criterion
+        show([(L["assert"], STRONG),
+              (f"{'✓' if p >= 0.5 else '✗'} {criterion.text}   (JuL {p:.2f})", OK if p >= 0.5 else KO)],
+             frames=12)
+        return p
     S["crit"].append((criterion.text, p))
     t, L = S["ticket"], tr()
     lines = [(L["checked"], STRONG)]
@@ -174,8 +172,7 @@ def check(self, criterion, evidence):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("tickets", nargs="*", default=[str(HERE / "tickets" / "truffaut-arrosoir.md"),
-                                                    str(HERE / "tickets" / "wordery-hobbit.md")])
+    ap.add_argument("tickets", nargs="*", default=[str(HERE / "tickets" / "vistaprint-cart-en.md")])
     ap.add_argument("--out", default=str(HERE / "demo.mp4"))
     args, rest = ap.parse_known_args()
     if FRAMES.exists():

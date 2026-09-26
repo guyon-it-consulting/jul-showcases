@@ -33,6 +33,7 @@ class Step:
     text: str
     quoted: list[str]
     optional: bool
+    check: bool = False         # an assertion checked in place, mid-journey (no click)
 
 
 @dataclass
@@ -47,7 +48,9 @@ class Ticket:
 def _item(line: str) -> Step:
     text = line.strip().rstrip(".")
     return Step(text=text, quoted=QUOTED.findall(text),
-                optional=bool(re.match(r"(?i)^(si|if)\b", text)))
+                optional=bool(re.match(r"(?i)^(si|if)\b", text)),
+                check=bool(re.match(r"(?i)^(check|verify|assert|confirm|ensure|v[eé]rifi\w*|"
+                                    r"s'assur\w*)\s+(that\b|que\b|:)", text)))
 
 
 def parse(md: str) -> Ticket:

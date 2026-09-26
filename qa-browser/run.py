@@ -128,13 +128,33 @@ class Page:
         oid = self.cdp.send("DOM.resolveNode", {"backendNodeId": el["node"]})["object"]["objectId"]
         self.cdp.send("Runtime.callFunctionOn", {"objectId": oid, "functionDeclaration": fn})
 
-    def settle(self, ms: int = 2500):
+    def _stable(self, need: int = 2, interval: int = 350, cap: int = 3000, tol: int = 24):
+        """Wait until the visible text stops changing, so a criterion is never read on a
+        half-rendered page. Site-agnostic: many pages fetch their data, go network-idle, then
+        render it client-side a beat later (a cart line, a result list...). Changes smaller than
+        `tol` characters count as stable — a rotating banner or a clock nudges the length by a few
+        chars and must not hold the run back, while a real render adds hundreds. Returns as soon as
+        the text has held for `need` reads, so a settled page costs one interval."""
+        prev, stable, waited = None, 0, 0
+        while waited < cap:
+            try:
+                n = self.page.evaluate("document.body ? document.body.innerText.length : 0")
+            except Exception:
+                break
+            stable = stable + 1 if prev is not None and abs(n - prev) <= tol else 0
+            if stable >= need:
+                break
+            prev = n
+            self.page.wait_for_timeout(interval)
+            waited += interval
+
+    def settle(self, ms: int = 800):
         try:
             self.page.wait_for_load_state("domcontentloaded", timeout=15000)
         except Exception:
             pass
         try:
-            self.page.wait_for_load_state("networkidle", timeout=10000)
+            self.page.wait_for_load_state("networkidle", timeout=1200)
         except Exception:
             pass                                                # trackers can keep a page busy forever
         self.page.wait_for_timeout(ms)
@@ -143,6 +163,7 @@ class Page:
                 break
             self.page.wait_for_timeout(500)
         self.pending.clear()
+        self._stable()                                          # late client-side render (React, etc.)
         try:
             self.cdp.detach()
         except Exception:
@@ -156,8 +177,7 @@ class Page:
         the element is really the topmost thing under the pointer: a loading overlay or a spinner
         would otherwise swallow the click, and the test would fail for the wrong reason."""
         self._call(el, "function(){this.scrollIntoView({block:'center'});}")
-        for _ in range(40):                                     # up to ~20 s, like Playwright's actionability
-            self.page.wait_for_timeout(500)
+        for i in range(40):                                     # up to ~20 s, like Playwright's actionability
             q = self.cdp.send("DOM.getContentQuads", {"backendNodeId": el["node"]})["quads"][0]
             x, y = sum(q[0::2]) / 4, sum(q[1::2]) / 4
             oid = self.cdp.send("DOM.resolveNode", {"backendNodeId": el["node"]})["object"]["objectId"]
@@ -167,6 +187,7 @@ class Page:
                                        "return !!t && (this===t || this.contains(t) || t.contains(this));}"})
             if on_top["result"].get("value"):
                 break
+            self.page.wait_for_timeout(500)                     # not yet clickable — wait, then re-check
         self.page.mouse.click(x, y)
         self.settle()
 
@@ -183,8 +204,11 @@ class Page:
         lines = [l.strip() for l in p.inner_text("body").splitlines() if l.strip()]
         keys = set().union(*(words(q) for q in criterion.quoted)) if criterion.quoted else words(criterion.text)
         hits = [i for i, l in enumerate(lines) if keys & words(l)]
-        keep = sorted({j for i in hits for j in range(max(0, i - 1), min(len(lines), i + 2))})
-        excerpt = " | ".join(lines[j] for j in keep)[:700] or " | ".join(lines[:15])[:500]
+        # A wide window around each hit: the criterion word alone ("Flyers") is ambiguous; the lines
+        # around it ("Quantity 500 ... Item total 19,99 €") are what let JuL tell a listed cart item
+        # from the same word in a menu or a heading.
+        keep = sorted({j for i in hits for j in range(max(0, i - 4), min(len(lines), i + 5))})
+        excerpt = " | ".join(lines[j] for j in keep)[:1400] or " | ".join(lines[:20])[:800]
         controls = [e["name"] for e in self.elements() if keys & words(e["name"])][:6]
         heads = " | ".join(h.strip() for h in p.locator("h1").all_inner_texts()[:2] if h.strip()) or p.title()
         return (f"Page title: {p.title()}\nMain heading: {heads}\n"
@@ -251,6 +275,19 @@ class Brain:
         a = r.choices[op]
         return op, (None if a.choice == "none" else fams[op][int(a.choice)]), a.confidence
 
+    def verify(self, criterion: Step, page: Page, tries: int = 4, pause: int = 1400) -> float:
+        """Check a criterion, re-reading the page and retrying while it fails, up to a cap — a
+        web-first assertion: a criterion is satisfied if it becomes true within the window, so a
+        late-rendered element (a cart line loaded after its summary...) is not a false negative.
+        A criterion that is really unmet still fails, only later; a met one returns on the first try."""
+        p_ok = 0.0
+        for i in range(tries):
+            p_ok = self.check(criterion, page.evidence(criterion))
+            if p_ok >= 0.5 or i == tries - 1:
+                break
+            page.page.wait_for_timeout(pause)
+        return p_ok
+
     def check(self, criterion: Step, evidence: str) -> float:
         # "The "X" page is displayed": a Choice on the page's title and heading only. Asked as a
         # free Noul over the whole page text, JuL is fooled by a header link that says "X" on any page.
@@ -295,13 +332,22 @@ def run(ticket: Ticket, args) -> int:
         tab = ctx.new_page()
         tab.goto(ticket.site, wait_until="domcontentloaded", timeout=60000)
         page = Page(tab)
-        page.settle(4000)
+        page.settle(1500)
 
         print(f"Ticket : {ticket.title}")
         print(f"Site   : {ticket.site}\n")
         t0 = time.perf_counter()
         steps_out, failed = [], False
         for n, step in enumerate(ticket.steps, 1):
+            if step.check:                                      # an assertion, checked in place — no click
+                p_ok = brain.verify(step, page)
+                ok = p_ok >= 0.5
+                print(f"{'✓' if ok else '✗'}  {n}. {step.text}   (JuL {p_ok:.2f})")
+                steps_out.append({"step": step.text, "assert": True, "ok": ok, "noul": round(p_ok, 3)})
+                if not ok and not step.optional:
+                    failed = True
+                    break
+                continue
             rec = recorded.get(step.text)
             el, how, op, conf = None, "jul", "click", 0.0
             if rec and rec.get("skipped"):
@@ -315,7 +361,7 @@ def run(ticket: Ticket, args) -> int:
                     op, conf, how = rec["op"], 1.0, "replay"
             if el is None:
                 op, el, conf = brain.pick(step, page, last=next(
-                    (s for s in reversed(steps_out) if not s.get("skipped")), None))
+                    (s for s in reversed(steps_out) if not s.get("skipped") and not s.get("assert")), None))
             if el is None:
                 if step.optional:
                     print(f"·  {n}. {step.text}\n     skipped: JuL finds nothing to do here ({conf:.2f})")
@@ -340,7 +386,7 @@ def run(ticket: Ticket, args) -> int:
               + ("Acceptance criteria" if ticket.lang == "en" else "Critères de validation"))
         results = []
         for c in ([] if failed else ticket.criteria):
-            p_ok = brain.check(c, page.evidence(c))
+            p_ok = brain.verify(c, page)
             ok = p_ok >= 0.5
             results.append({"criterion": c.text, "noul": round(p_ok, 3), "ok": ok})
             print(f"  {'✓' if ok else '✗'} {c.text}   (JuL {p_ok:.2f})")
