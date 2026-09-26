@@ -1,14 +1,41 @@
 # qa-browser — the Product Manager writes the test, JuL runs it
 
-A Product Manager writes an acceptance test in plain words (French or English), inside the ticket.
-JuL runs it in a real browser and says whether the ticket passes. **JuL is the only model**: it
-picks every element and checks every assertion, and it never writes anything. The only text it
-types is the text the Product Manager put in quotes. No API key, no token generated, $0 per run, so you can
-rerun it on every deploy. Nothing in the code is tied to a site.
+Your Product Manager writes a test the way they'd describe it to a teammate — plain sentences, in a
+ticket. JuL reads it, runs it in a real browser, and tells you whether it passed. That's the whole
+idea.
 
-The demo ticket personalizes a flyer on **vistaprint.com** — from the product page, through the
-design studio, to a cart with the item in it — and checks two things *during* the journey and
-three *at the end*:
+Here's a real one — personalize a flyer on vistaprint.com and get it into the cart:
+
+```markdown
+# Ticket QA-VP-02 — Personalize a flyer and add it to the cart
+
+Site : https://www.vistaprint.com/marketing-materials/flyers
+
+## Steps
+
+1. If a country banner appears, click "Close".
+2. Click "Browse our templates".
+3. Check that the "Flyers Templates" page is displayed.
+4. Open one of the "Flyers templates".
+5. Click "Edit my design".
+6. Click "Next".
+7. Click "Continue without Back".
+8. Check the box "I have reviewed and approve my design".
+9. Click "Continue".
+10. Check that the "Final Steps" page is displayed.
+11. Click "Add to cart".
+12. Click "Continue".
+13. Click "Continue to cart".
+
+## Acceptance criteria
+
+- The "My Cart" page is displayed.
+- The cart contains a "Flyers" item with quantity 500.
+- The "Checkout" button is visible.
+```
+
+No selectors, no code — just what a person would click and what they'd expect to see. Here's JuL
+running it:
 
 ```console
 $ python qa-browser/run.py qa-browser/tickets/vistaprint-cart-en.md --headed
@@ -49,71 +76,47 @@ PASS — 13 steps, 3 criteria, 78 s
 JuL: 11 decisions, median 2206 ms, 0 tokens generated, $0.00
 ```
 
-Note steps 3 and 10: the flow goes through a design editor, and no `Add to cart` exists until the
-personalization is done — so the test **asserts along the way** that it reached the templates
-gallery and then the final-steps page, and stops at the first assertion that fails. That is how you
-tell *where* a checkout funnel broke, not just that it broke.
+**JuL is the only brain here.** It picks every element and judges every check — and it never writes
+anything: the only text it ever types is what the Product Manager put in quotes. No API key, nothing
+generated, $0 a run. So you can run it on every deploy, and nothing in the code is tied to one site.
 
-▶️ **[Watch the screencast: `qa-browser/demo.mp4`](demo.mp4)** — a real run on vistaprint.com,
-recorded with `python qa-browser/record_run.py`. Frames are grabbed around each action, so the time
-JuL spends deciding is cut; the real decision time is shown in each caption.
+Notice steps 3 and 10. Vistaprint makes you design the flyer before an "Add to cart" button even
+exists, so the test checks *as it goes* — did we reach the template gallery? the final-steps page? —
+and stops at the first check that fails. When a checkout funnel breaks, that tells you *where* it
+broke, not just *that* it broke.
 
-Measured on Apple Silicon (MLX, `wemm-4b-4bit`): ~2.2 s per decision (median), a full 13-step
-personalize-and-add-to-cart run in ~80 s — about a third of it JuL thinking, the rest the site
-loading — every rerun at $0.
+▶️ **[Watch the screencast (`demo.mp4`)](demo.mp4)** — this exact run on vistaprint.com, recorded
+with `python qa-browser/record_run.py`. On an Apple Silicon Mac (MLX, `wemm-4b-4bit`) the whole
+personalize-and-add-to-cart run takes about 80 seconds — roughly a third JuL thinking, the rest the
+site loading — and every rerun is free.
 
-## The Product Manager format
+## Writing a ticket
 
-```markdown
-# Ticket QA-VP-02 — Personalize a flyer and add it to the cart
+A few rules, and that's really all:
 
-Site : https://www.vistaprint.com/marketing-materials/flyers
+- **`Site :`** is where JuL starts.
+- **One action per numbered line, in your own words** — *click*, *open*, *go to*. There's no fixed
+  vocabulary; JuL works out which element on the page you mean.
+- **Anything in "quotes" is copied straight from the site** — a button label, a product name, the
+  text to type. It's the one thing to get exactly right, and it's exactly what a user sees on screen.
+- **Start a line with *If* (or *Si*) and it's optional.** No banner today? JuL skips it instead of
+  failing.
+- **Start with *Check that* / *Verify that* / *Vérifier que* and it's an assertion** — JuL just
+  looks, no click, and the run halts at the first one that fails. (*Check the box "…"*, with no
+  *that*, still ticks the box.)
 
-## Steps
+It works in French too — `## Étapes` and `## Critères de validation`. Each bullet under **Acceptance
+criteria** is a yes/no question about the final page, and the ticket passes only when every step,
+every assertion and every criterion does.
 
-1. If a country banner appears, click "Close".
-2. Click "Browse our templates".
-3. Check that the "Flyers Templates" page is displayed.
-4. Open one of the "Flyers templates".
-5. Click "Edit my design".
-6. Click "Next".
-7. Click "Continue without Back".
-8. Check the box "I have reviewed and approve my design".
-9. Click "Continue".
-10. Check that the "Final Steps" page is displayed.
-11. Click "Add to cart".
-12. Click "Continue".
-13. Click "Continue to cart".
+One tip: **make your checks specific.** `a "Flyers" item with quantity 500` is judged far more
+reliably than a bare `Flyers`, because the extra detail gives JuL something concrete on the page to
+agree with.
 
-## Acceptance criteria
+## Under the hood
 
-- The "My Cart" page is displayed.
-- The cart contains a "Flyers" item with quantity 500.
-- The "Checkout" button is visible.
-```
-
-The rules, and that's all:
-
-1. **`Site :`** is the starting URL.
-2. **One action per numbered step**, in the Product Manager's own words: *click*, *open*, *go to*… There is no
-   fixed vocabulary; JuL maps the sentence to an element on the page.
-3. **Anything in "quotes" is copied verbatim from the site**: a button label, a product name, or
-   the text to type. It is the one thing the Product Manager must get exactly right.
-4. **A step starting with *If* / *Si* is optional.** When it does not apply (no banner this time),
-   it is skipped instead of failing.
-5. **A step starting with *Check that* / *Verify that* / *Vérifier que* is an assertion**, checked
-   in place on the current page — no click. The run stops at the first one that fails, so it points
-   at the exact step where the journey went wrong. (*Check the box "…"* — no *that* — is still an
-   action: JuL ticks the box.)
-
-The same format works in French: `## Étapes` and `## Critères de validation`.
-
-Each bullet under **Acceptance criteria** is a yes/no question about the final page. The ticket
-passes when every step, every assertion and every criterion passes. Make assertions **specific** —
-`a "Flyers" item with quantity 500` is judged far more reliably than a bare `Flyers`, because the
-extra detail is corroborated by what is actually on the page.
-
-## What JuL decides
+For each step, the harness reads the page's accessibility tree, keeps the ~10 controls whose names
+share words with your sentence, and hands them to JuL. JuL makes the call:
 
 ```
 OBSERVE  CDP Accessibility.getFullAXTree   → every named control: role + accessible name
@@ -126,22 +129,20 @@ ASSERT   a "Check that ..." step, and every acceptance criterion, is a Choice/No
          re-read until true within a short window, so late-rendered content is not a false negative
 ```
 
-The harness only does mechanical work: it reads the accessibility tree and keeps the ~10 controls
-whose names share words with the step. The choice among them is JuL's. There is no site-specific
-code: no CSS selector, no URL rule, no label list.
+That's the whole split: the harness does the mechanical work, JuL makes every choice. No CSS
+selector, no URL rule, no hand-written list of labels — nothing tied to a particular site.
 
 ## Replay for $0
 
-Every run writes a trace (`qa-browser/runs/<ticket>.json`): for each step, the element JuL chose,
-and for each assertion, JuL's probability.
+Every run writes a trace (`qa-browser/runs/<ticket>.json`) with the element JuL chose for each step
+and its probability for each check. Replaying reuses those elements:
 
 ```console
 $ python qa-browser/run.py qa-browser/tickets/vistaprint-cart-en.md --replay
 ```
 
-`--replay` reuses the recorded element whenever it is still on the page. JuL is called again only
-for a step whose element has disappeared (the site changed) and for the assertions, which are
-always re-checked. Rerunning a test costs nothing.
+JuL is only called again for a step whose element has vanished (the site changed) and for the
+assertions, which are always re-checked. Rerunning a green test costs nothing.
 
 ## Run it
 
@@ -151,12 +152,12 @@ playwright install chromium
 python qa-browser/run.py qa-browser/tickets/vistaprint-cart-en.md --headed
 ```
 
-On a bot-protected site, drive your own browser instead (it keeps your cookies and passes the
-challenge you solved by hand):
+On a bot-protected site, point JuL at your own browser instead — it keeps your cookies and the
+challenge you already solved by hand:
 
 ```bash
 google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.qa-agent"
 python qa-browser/run.py my-ticket.md --cdp http://localhost:9222
 ```
 
-The demo flow stops at the cart: nothing is ever ordered.
+The demo flow stops at the cart — nothing is ever ordered.
